@@ -1,10 +1,11 @@
 # mconnect
 
-Test that makes many connects to a vip address.
+Test programs that makes many connects to a vip address.
 
-The intention is fast test of connectivity and load-balancing. An
-`mconnect` in server mode is started on all targets and then make
-connects towards the vip address.
+The purpose is fast test of connectivity and load-balancing.
+`mconnect` in server mode is started on all targets and then
+`mconnect` in client mode is used to do multiple connects towards the
+vip address.
 
 If `mconnect` in server mode is started as a Deployment with many
 replicas in a Kubernetes cluster `mconnect` can be used to access the
@@ -27,12 +28,14 @@ sys     0m 0.13s
 
 The example shows the perfect balancing for `proxy-mode=ipvs`. Even
 though `mconnect` is pretty fast it is not a performance measurement
-tool since the bottlenecks are likely to be in `mconnect` itself.
+tool since some bottlenecks are likely in `mconnect` itself.
 
 
 ## Build
 
 ```
 go get github.com/Nordix/mconnect
-go install github.com/Nordix/mconnect/cmd/mconnect
+CGO_ENABLED=0 GOOS=linux go install -a -ldflags '-extldflags "-static"' \
+  github.com/Nordix/mconnect/cmd/mconnect
+strip $GOPATH/bin/mconnect
 ```
