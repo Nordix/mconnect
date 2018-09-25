@@ -25,6 +25,6 @@ spec:
     spec:
       containers:
       - name: mconnect
-        image: docker.io/nordixorg/mconnect:0.1
+        image: docker.io/nordixorg/mconnect:0.2
         ports:
         - containerPort: 5001
