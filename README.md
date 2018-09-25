@@ -59,7 +59,41 @@ name of the service may be different on your cluster.
 
 ```
 go get github.com/Nordix/mconnect
-CGO_ENABLED=0 GOOS=linux go install -a -ldflags '-extldflags "-static"' \
+CGO_ENABLED=0 GOOS=linux go install -a \
+  -ldflags '-extldflags "-static" -X main.version=0.0' \
   github.com/Nordix/mconnect/cmd/mconnect
 strip $GOPATH/bin/mconnect
 ```
+
+
+## Many source addresses
+
+Some tests requires that traffic comes from many source addresses. It
+is allowed to assign entire subnets to the loopback interface an we
+use it for this purpose;
+
+```
+ip addr add 222.222.222.0/24 dev lo
+ip -6 addr add 5000::/112 dev lo
+ip -6 ro add local 5000::/112 dev lo
+```
+
+But we must also be able to use these address for traffic on other
+interfaces;
+
+```
+sudo sysctl -w net.ipv4.ip_nonlocal_bind=1
+sudo sysctl -w net.ipv6.ip_nonlocal_bind=1
+```
+
+Now we can let `mconnect` (and other programs that allows the source
+to be specified) to use any address from the ranges assigned to the
+loopback interface;
+
+```
+mconnect -address 10.0.0.2:5001 -nconn 1000 -src 222.222.222 -srcmax 254
+mconnect -address [1000::2]:5001 -nconn 1000 -src 5000: -srcmax 65534
+```
+
+The implementation is a hack and works on strings. ".rnd" added for
+ipv4 and ":rnd" for ipv6. Feel free to improve.
