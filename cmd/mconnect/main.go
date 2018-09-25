@@ -19,6 +19,8 @@ import (
 	"context"
 )
 
+var version string = "unknown"
+
 const helptext = `
 Mconnect make many connects towards an address. The address is
 supposed to be a virtual ip-address (vip) that is load-balanced to
@@ -42,6 +44,7 @@ type config struct {
 	src *string
 	nconn *int
 	keep *bool
+	version *bool
 	srcmax *int
 	seed *int
 	maxconcurrent *int
@@ -62,12 +65,18 @@ func main() {
 	cmd.srcmax = flag.Int("srcmax", 100, "Number of connect sources")
 	cmd.nconn = flag.Int("nconn", 1, "Number of connections")
 	cmd.keep = flag.Bool("keep", false, "Keep connections open")
+	cmd.version = flag.Bool("version", false, "Print version and quit")
 	cmd.seed = flag.Int("seed", 0, "Rnd seed. 0 = init from time")
 	cmd.maxconcurrent = flag.Int("maxconcurrent", 64, "Max concurrent connects")
 
 	flag.Parse()
 	if len(os.Args) < 2 {
 		flag.Usage()
+		os.Exit(0)
+	}
+
+	if *cmd.version {
+		fmt.Println(version)
 		os.Exit(0)
 	}
 
@@ -180,7 +189,7 @@ func rndAddress(base string, cnt int) (adr net.Addr, err error) {
 	var sadr string
 	if strings.ContainsAny(base, ":") {
 		// ipv6
-		if cnt >= 60000 {
+		if cnt > 0xfffe {
 			err = errors.New("Address range too large")
 			return
 		}
