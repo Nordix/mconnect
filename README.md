@@ -7,7 +7,7 @@ The purpose is fast test of connectivity and load-balancing.
 `mconnect` in client mode is used to do multiple connects towards the
 vip address.
 
-Local test;
+Local test (without a vip address);
 
 ```
 > mconnect -server -address [::1]:5001 &
@@ -25,13 +25,18 @@ Even though `mconnect` is pretty fast it is not a performance
 measurement tool since some bottlenecks are likely in `mconnect`
 itself.
 
+
 ## Kubernetes
 
-If `mconnect` in server mode is started as a Deployment with many
-replicas in a Kubernetes cluster `mconnect` can be used to access the
-service address (ClusterIP);
+An image for use in Kubernetes is uploaded to
+`docker.io/nordixorg/mconnect`.  You can install it with the provided
+[manifest](mconnect.yaml). The service address (ClusterIP) can then be
+used to access the server;
 
 ```
+# kubectl apply -f https://github.com/Nordix/mconnect/raw/master/mconnect.yaml
+service/mconnect created
+deployment.apps/mconnect-deployment created
 # time mconnect -address mconnect.default.svc.cluster.local:5001 -nconn 1000
 2018/09/21 08:53:21 Using timeout; 3s
 Failed connects; 0
@@ -46,7 +51,8 @@ sys     0m 0.13s
 #
 ```
 
-The example shows the perfect balancing for `proxy-mode=ipvs`.
+The example shows the perfect balancing for `proxy-mode=ipvs`. The
+name of the service may be different on your cluster.
 
 
 ## Build
