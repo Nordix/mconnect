@@ -58,9 +58,11 @@ name of the service may be different on your cluster.
 ## Build
 
 ```
-go get github.com/Nordix/mconnect
+go get -u github.com/Nordix/mconnect
+cd $GOPATH/src/github.com/Nordix/mconnect
+ver=$(git rev-parse --short HEAD)
 CGO_ENABLED=0 GOOS=linux go install -a \
-  -ldflags '-extldflags "-static" -X main.version=0.0' \
+  -ldflags "-extldflags '-static' -X main.version=$ver" \
   github.com/Nordix/mconnect/cmd/mconnect
 strip $GOPATH/bin/mconnect
 ```
@@ -69,7 +71,7 @@ strip $GOPATH/bin/mconnect
 ## Many source addresses
 
 Some tests requires that traffic comes from many source addresses. It
-is allowed to assign entire subnets to the loopback interface an we
+is allowed to assign entire subnets to the loopback interface and we
 use it for this purpose;
 
 ```
@@ -95,5 +97,5 @@ mconnect -address 10.0.0.2:5001 -nconn 1000 -src 222.222.222 -srcmax 254
 mconnect -address [1000::2]:5001 -nconn 1000 -src 5000: -srcmax 65534
 ```
 
-The implementation is a hack and works on strings. ".rnd" added for
+The implementation is a hack and works on strings; ".rnd" is added for
 ipv4 and ":rnd" for ipv6. Feel free to improve.
