@@ -72,6 +72,7 @@ func main() {
 	cmd.seed = flag.Int("seed", 0, "Rnd seed. 0 = init from time")
 	cmd.maxconcurrent = flag.Int("maxconcurrent", 64, "Max concurrent connects")
 	cmd.output = flag.String("output", "txt", "Output format; json|txt")
+	cmd.timeout = flag.Duration("timeout", 0, "Timeout")
 
 	flag.Parse()
 	if len(os.Args) < 2 {
@@ -109,8 +110,12 @@ func (c *config) client() int {
 	if *c.keep {
 		stats.Timeout = time.Hour
 	} else {
-		stats.Timeout = time.Duration(*c.nconn * int(time.Second) / 1000)
-		stats.Timeout += 2*time.Second
+		if *c.timeout != time.Duration(0) {
+			stats.Timeout = *c.timeout
+		} else {
+			stats.Timeout = time.Duration(*c.nconn * int(time.Second) / 1000)
+			stats.Timeout += 2*time.Second
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), stats.Timeout)
