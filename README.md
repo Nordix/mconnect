@@ -12,7 +12,6 @@ Local test (without a vip address);
 ```
 > mconnect -server -address [::1]:5001 &
 > time mconnect -address [::1]:5001 -nconn 1000
-2018/09/25 10:30:22 Using timeout; 3s
 Failed connects; 0
 Failed reads; 0
 your-hostname 1000
@@ -38,7 +37,6 @@ used to access the server;
 service/mconnect created
 deployment.apps/mconnect-deployment created
 # time mconnect -address mconnect.default.svc.cluster.local:5001 -nconn 1000
-2018/09/21 08:53:21 Using timeout; 3s
 Failed connects; 0
 Failed reads; 0
 mconnect-deployment-5897ffb75c-dbgt5 250
@@ -53,6 +51,27 @@ sys     0m 0.13s
 
 The example shows the perfect balancing for `proxy-mode=ipvs`. The
 name of the service may be different on your cluster.
+
+Output can be in `json`. The output is not formatted so for a readable
+printout pipe through [jq](https://stedolan.github.io/jq/);
+
+```
+> mconnect -address 10.0.0.2:5001 -nconn 6000 -output json | jq .
+{
+  "hosts": {
+    "mconnect-deployment-69b454c755-8mkhk": 1500,
+    "mconnect-deployment-69b454c755-rsdm8": 1499,
+    "mconnect-deployment-69b454c755-w95k5": 1501,
+    "mconnect-deployment-69b454c755-w9w6h": 1500
+  },
+  "connects": 6000,
+  "failed_connects": 0,
+  "failed_reads": 0,
+  "start_time": "2018-10-25T14:53:34.652534263+02:00",
+  "timeout": 8000000000,
+  "duration": 642530530
+}
+```
 
 
 ## Build

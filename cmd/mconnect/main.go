@@ -17,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"context"
+	"encoding/json"
 )
 
 var version string = "unknown"
@@ -48,6 +49,8 @@ type config struct {
 	srcmax *int
 	seed *int
 	maxconcurrent *int
+	output *string
+	timeout *time.Duration
 	limiter chan int
 	wg sync.WaitGroup
 }
@@ -68,6 +71,7 @@ func main() {
 	cmd.version = flag.Bool("version", false, "Print version and quit")
 	cmd.seed = flag.Int("seed", 0, "Rnd seed. 0 = init from time")
 	cmd.maxconcurrent = flag.Int("maxconcurrent", 64, "Max concurrent connects")
+	cmd.output = flag.String("output", "txt", "Output format; json|txt")
 
 	flag.Parse()
 	if len(os.Args) < 2 {
@@ -102,17 +106,18 @@ func (c *config) client() int {
 	// times out the execution time would be horrible for say 10000
 	// connect attempts. So set a dead-line. We assume that 1000
 	// connects/sec is supported and we allow a margin of 2 sec.
-	var timeout time.Duration
 	if *c.keep {
-		timeout = time.Hour
+		stats.Timeout = time.Hour
 	} else {
-		timeout = time.Duration(*c.nconn * int(time.Second) / 1000)
-		timeout += 2*time.Second
+		stats.Timeout = time.Duration(*c.nconn * int(time.Second) / 1000)
+		stats.Timeout += 2*time.Second
 	}
-	log.Println("Using timeout;", timeout)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), stats.Timeout)
 	defer cancel()
 
+	stats.Start = time.Now()
+	stats.Connects = *c.nconn
 	c.wg.Add(*c.nconn)
 	for i := 0; i < *c.nconn; i++ {
 		go c.connect(ctx)
@@ -123,13 +128,17 @@ func (c *config) client() int {
 	hostch <- "QUIT!"
 	c.wg.Wait()
 
-	fmt.Println("Failed connects;", failedConnects)
-	fmt.Println("Failed reads;", failedReads)
-	for h,i := range hostmap {
-		fmt.Println(h,i)
+	stats.Duration = time.Since(stats.Start)
+	if *c.output == "json" {
+		json.NewEncoder(os.Stdout).Encode(stats)
+	} else {
+		fmt.Println("Failed connects;", stats.FailedConnects)
+		fmt.Println("Failed reads;", stats.FailedReads)
+		for h,i := range stats.Hostmap {
+			fmt.Println(h,i)
+		}
 	}
-
-	if failedConnects > 0 || failedReads > 0 {
+	if stats.FailedConnects > 0 || stats.FailedReads > 0 {
 		return 1
 	}
 	return 0
@@ -203,7 +212,7 @@ func rndAddress(base string, cnt int) (adr net.Addr, err error) {
 		sadr = fmt.Sprintf("%s.%d:0", base, rand.Intn(cnt) + 1)
 	}
 	adr, err = net.ResolveTCPAddr("tcp", sadr)
-	log.Println("Using source address:", sadr)
+	//log.Println("Using source address:", sadr)
 	return
 }
 
@@ -223,7 +232,7 @@ func (c *config) connect(ctx context.Context) {
 	<- c.limiter
 	if err != nil {
 		//log.Println("Connect", err)
-		atomic.AddUint64(&failedConnects, 1)
+		atomic.AddUint64(&stats.FailedConnects, 1)
 		return
 	}
 	defer conn.Close()
@@ -236,7 +245,7 @@ func (c *config) connect(ctx context.Context) {
 	buf := make([]byte, 4096)
 	for ok := true; ok; ok = *c.keep {
 		if len, err := conn.Read(buf); err != nil {
-			atomic.AddUint64(&failedReads, 1)
+			atomic.AddUint64(&stats.FailedReads, 1)
 			//log.Print("Read", err)
 			return
 		} else {
@@ -250,10 +259,20 @@ func (c *config) connect(ctx context.Context) {
 // ----------------------------------------------------------------------
 // Stats
 
-var hostmap map[string]int = make(map[string]int)
+type statistics struct {
+	Hostmap map[string]int  `json:"hosts"`
+	Connects int            `json:"connects"`
+	FailedConnects uint64   `json:"failed_connects"`
+	FailedReads uint64      `json:"failed_reads"`
+	Start time.Time         `json:"start_time"`
+	Timeout time.Duration   `json:"timeout"`
+	Duration time.Duration  `json:"duration"`
+}
 var hostch chan string = make(chan string, 100)
-var failedConnects uint64 = 0
-var failedReads uint64 = 0
+var stats = statistics{
+	Hostmap: make(map[string]int),
+}
+
 
 func stats_worker(wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -262,10 +281,10 @@ func stats_worker(wg *sync.WaitGroup) {
 		if h == "QUIT!" {
 			return
 		}
-		if val, ok := hostmap[h]; ok {
-			hostmap[h] = (val+1)
+		if val, ok := stats.Hostmap[h]; ok {
+			stats.Hostmap[h] = (val+1)
 		} else {
-			hostmap[h] = 1
+			stats.Hostmap[h] = 1
 		}
 	}
 }
