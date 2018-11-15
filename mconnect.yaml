@@ -6,7 +6,12 @@ spec:
   selector:
     app: mconnect
   ports:
-  - port: 5001
+  - name: tcp
+    port: 5001
+  - name: udp
+    port: 5002
+    targetPort: 5001
+    protocol: UDP
   type: LoadBalancer
 ---
 apiVersion: apps/v1beta1
@@ -25,6 +30,6 @@ spec:
     spec:
       containers:
       - name: mconnect
-        image: docker.io/nordixorg/mconnect:0.2
+        image: nordixorg/mconnect:1.1
         ports:
         - containerPort: 5001

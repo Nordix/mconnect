@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"fmt"
+	"runtime"
 	"time"
 	"math/rand"
 	"errors"
@@ -45,6 +46,7 @@ type config struct {
 	src *string
 	nconn *int
 	keep *bool
+	udp *bool
 	version *bool
 	srcmax *int
 	seed *int
@@ -68,6 +70,7 @@ func main() {
 	cmd.srcmax = flag.Int("srcmax", 100, "Number of connect sources")
 	cmd.nconn = flag.Int("nconn", 1, "Number of connections")
 	cmd.keep = flag.Bool("keep", false, "Keep connections open")
+	cmd.udp = flag.Bool("udp", false, "Use UDP")
 	cmd.version = flag.Bool("version", false, "Print version and quit")
 	cmd.seed = flag.Int("seed", 0, "Rnd seed. 0 = init from time")
 	cmd.maxconcurrent = flag.Int("maxconcurrent", 64, "Max concurrent connects")
@@ -125,7 +128,11 @@ func (c *config) client() int {
 	stats.Connects = *c.nconn
 	c.wg.Add(*c.nconn)
 	for i := 0; i < *c.nconn; i++ {
-		go c.connect(ctx)
+		if *c.udp {
+			go c.udpConnect(ctx)
+		} else {
+			go c.connect(ctx)
+		}
 	}
 	c.wg.Wait()
 
@@ -168,6 +175,10 @@ func (c *config) server() int {
 		return -1				
 	}
 
+	if *c.udp {
+		c.udpServer(obj.hostname)
+	}
+
 	for {
 		if conn, err := l.Accept(); err != nil {
 			log.Fatal(err)
@@ -177,6 +188,29 @@ func (c *config) server() int {
 	}
 
 	return 0
+}
+
+func (c *config) udpServer(hostname string) {
+
+	pc, err := net.ListenPacket("udp", *c.addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Listen on UDP address; ", *c.addr)
+
+	rd := func (pc net.PacketConn) {
+		buf := make([]byte, 9000)
+		for {
+			_, addr, err := pc.ReadFrom(buf)
+			if err != nil {
+				continue
+			}
+			pc.WriteTo([]byte(hostname), addr)
+		}
+	}
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go rd(pc)
+	}
 }
 
 // Handles incoming requests.
@@ -257,6 +291,55 @@ func (c *config) connect(ctx context.Context) {
 			host := string(buf[:len])
 			hostch <- host
 		}
+	}
+}
+
+func (c *config) udpConnect(ctx context.Context) {
+	defer c.wg.Done()
+
+	var saddr *net.UDPAddr
+	if *c.src != "" {
+		if src, err := rndAddress(*c.src, *c.srcmax); err != nil {
+			log.Fatal(err)
+			return
+		} else {
+			saddr, err = net.ResolveUDPAddr("udp", src.String())
+		}
+	}
+
+	raddr, err := net.ResolveUDPAddr("udp", *c.addr)
+	if err != nil {
+		atomic.AddUint64(&stats.FailedConnects, 1)
+		return
+	}
+
+	c.limiter <- 0
+	conn, err := net.DialUDP("udp", saddr, raddr)
+	if err != nil {
+		<- c.limiter
+		atomic.AddUint64(&stats.FailedConnects, 1)
+		return
+	}
+	defer conn.Close()
+
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+	}
+
+	if _, err = conn.Write([]byte("Hello")); err != nil {
+		<- c.limiter
+		atomic.AddUint64(&stats.FailedConnects, 1)
+		return
+	}
+	buf := make([]byte, 4096)
+	len, err := conn.Read(buf)
+	<- c.limiter
+	if err != nil {
+		atomic.AddUint64(&stats.FailedReads, 1)
+		return
+	} else {
+		host := string(buf[:len])
+		hostch <- host
 	}
 }
 

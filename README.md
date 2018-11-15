@@ -84,6 +84,13 @@ CGO_ENABLED=0 GOOS=linux go install -a \
   -ldflags "-extldflags '-static' -X main.version=$ver" \
   github.com/Nordix/mconnect/cmd/mconnect
 strip $GOPATH/bin/mconnect
+
+# Build a docker image;
+docker rmi docker.io/nordixorg/mconnect:$ver
+cd $GOPATH/bin
+tar -cf - mconnect | docker import \
+  -c 'CMD ["/mconnect", "-server", "-udp", "-address", "[::]:5001"]' \
+  - docker.io/nordixorg/mconnect:$ver
 ```
 
 
