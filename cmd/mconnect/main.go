@@ -13,6 +13,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -45,6 +46,7 @@ type config struct {
 	addr          *string
 	src           *string
 	nconn         *int
+	k8sprobe      *string
 	keep          *bool
 	udp           *bool
 	version       *bool
@@ -70,6 +72,7 @@ func main() {
 	cmd.srcmax = flag.Int("srcmax", 100, "Number of connect sources")
 	cmd.nconn = flag.Int("nconn", 1, "Number of connections")
 	cmd.keep = flag.Bool("keep", false, "Keep connections open")
+	cmd.k8sprobe = flag.String("k8sprobe", "", "k8s liveness address (http)")
 	cmd.udp = flag.Bool("udp", false, "Use UDP")
 	cmd.version = flag.Bool("version", false, "Print version and quit")
 	cmd.seed = flag.Int("seed", 0, "Rnd seed. 0 = init from time")
@@ -89,6 +92,7 @@ func main() {
 	}
 
 	if *cmd.isServer {
+		k8sLivenessServer(*cmd.k8sprobe)
 		os.Exit(cmd.server())
 	} else {
 		os.Exit(cmd.client())
@@ -339,6 +343,41 @@ func (c *config) udpConnect(ctx context.Context) {
 		host := string(buf[:len])
 		hostch <- host
 	}
+}
+
+var malfunction bool = false
+
+func livenessHandler(w http.ResponseWriter, r *http.Request) {
+
+	mal := r.Header.Get("X-Malfunction")
+	if mal != "" {
+		if mal == "yes" {
+			malfunction = true
+		} else {
+			malfunction = false
+		}
+	}
+
+	if malfunction {
+		w.WriteHeader(500)
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "Nemo"
+	}
+	fmt.Fprintf(w, "%s,%s\n", hostname, r.RemoteAddr)
+}
+
+func k8sLivenessServer(addr string) {
+	if addr == "" {
+		return
+	}
+	log.Printf("K8s Liveness on; http://%s/healthz\n", addr)
+	http.HandleFunc("/healthz", livenessHandler)
+	go func(addr string) {
+		log.Fatal(http.ListenAndServe(addr, nil))
+	}(addr)
 }
 
 // ----------------------------------------------------------------------

@@ -89,7 +89,7 @@ strip $GOPATH/bin/mconnect
 docker rmi docker.io/nordixorg/mconnect:$ver
 cd $GOPATH/bin
 tar -cf - mconnect | docker import \
-  -c 'CMD ["/mconnect", "-server", "-udp", "-address", "[::]:5001"]' \
+  -c 'CMD ["/mconnect", "-server", "-udp", "-address", "[::]:5001", "-k8sprobe", "[::]:8080"]' \
   - docker.io/nordixorg/mconnect:$ver
 ```
 
@@ -125,3 +125,35 @@ mconnect -address [1000::2]:5001 -nconn 1000 -src 5000: -srcmax 65534
 
 The implementation is a hack and works on strings; ".rnd" is added for
 ipv4 and ":rnd" for ipv6. Feel free to improve.
+
+
+## Kubernetes Liveness probe
+
+When running as a server `mconnect` can start a http server to listen
+to Kubernetes Liveness probes;
+
+```
+mconnect -server -address [::]:5001 -k8sprobe [::]:8080
+2018/11/28 14:58:40 K8s Liveness on; http://[::]:8080/healthz
+2018/11/28 14:58:40 Listen on address;  [::]:5001
+```
+
+The probe address will reply with the hostname and the callers
+address;
+
+```
+curl http://[::1]:8080/healthz
+your-hostname,[::1]:43652
+```
+
+A http header can be used to emulate a malfunction;
+
+```
+curl -I -H "X-Malfunction: yes" http://[::1]:8080/healthz
+HTTP/1.1 500 Internal Server Error
+...
+```
+
+All subsequent calls to the liveness probe address will return "500"
+until the server is restarted by Kubernetes or until a call with the
+`X-Malfunction` set to anything except "yes".
