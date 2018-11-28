@@ -5,20 +5,20 @@
 package main
 
 import (
-	"os"
-	"flag"
-	"log"
-	"net"
-	"fmt"
-	"runtime"
-	"time"
-	"math/rand"
+	"context"
+	"encoding/json"
 	"errors"
+	"flag"
+	"fmt"
+	"log"
+	"math/rand"
+	"net"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"context"
-	"encoding/json"
+	"time"
 )
 
 var version string = "unknown"
@@ -41,20 +41,20 @@ Options;
 `
 
 type config struct {
-	isServer *bool
-	addr *string
-	src *string
-	nconn *int
-	keep *bool
-	udp *bool
-	version *bool
-	srcmax *int
-	seed *int
+	isServer      *bool
+	addr          *string
+	src           *string
+	nconn         *int
+	keep          *bool
+	udp           *bool
+	version       *bool
+	srcmax        *int
+	seed          *int
 	maxconcurrent *int
-	output *string
-	timeout *time.Duration
-	limiter chan int
-	wg sync.WaitGroup
+	output        *string
+	timeout       *time.Duration
+	limiter       chan int
+	wg            sync.WaitGroup
 }
 
 func main() {
@@ -117,7 +117,7 @@ func (c *config) client() int {
 			stats.Timeout = *c.timeout
 		} else {
 			stats.Timeout = time.Duration(*c.nconn * int(time.Second) / 1000)
-			stats.Timeout += 2*time.Second
+			stats.Timeout += 2 * time.Second
 		}
 	}
 
@@ -146,8 +146,8 @@ func (c *config) client() int {
 	} else {
 		fmt.Println("Failed connects;", stats.FailedConnects)
 		fmt.Println("Failed reads;", stats.FailedReads)
-		for h,i := range stats.Hostmap {
-			fmt.Println(h,i)
+		for h, i := range stats.Hostmap {
+			fmt.Println(h, i)
 		}
 	}
 	if stats.FailedConnects > 0 || stats.FailedReads > 0 {
@@ -157,7 +157,7 @@ func (c *config) client() int {
 }
 
 type Server struct {
-        hostname string
+	hostname string
 }
 
 func (c *config) server() int {
@@ -172,7 +172,7 @@ func (c *config) server() int {
 	obj := new(Server)
 	if obj.hostname, err = os.Hostname(); err != nil {
 		log.Fatal("os.Hostname", err)
-		return -1				
+		return -1
 	}
 
 	if *c.udp {
@@ -198,7 +198,7 @@ func (c *config) udpServer(hostname string) {
 	}
 	log.Println("Listen on UDP address; ", *c.addr)
 
-	rd := func (pc net.PacketConn) {
+	rd := func(pc net.PacketConn) {
 		buf := make([]byte, 9000)
 		for {
 			_, addr, err := pc.ReadFrom(buf)
@@ -226,8 +226,6 @@ func (obj *Server) handleRequest(conn net.Conn) {
 	}
 }
 
-
-
 func (c *config) Help() string {
 	return helptext
 }
@@ -241,14 +239,14 @@ func rndAddress(base string, cnt int) (adr net.Addr, err error) {
 			err = errors.New("Address range too large")
 			return
 		}
-		sadr = fmt.Sprintf("[%s:%x]:0", base, rand.Intn(cnt) + 1)
+		sadr = fmt.Sprintf("[%s:%x]:0", base, rand.Intn(cnt)+1)
 	} else {
 		// ipv4
 		if cnt > 254 {
 			err = errors.New("Address range too large")
 			return
 		}
-		sadr = fmt.Sprintf("%s.%d:0", base, rand.Intn(cnt) + 1)
+		sadr = fmt.Sprintf("%s.%d:0", base, rand.Intn(cnt)+1)
 	}
 	adr, err = net.ResolveTCPAddr("tcp", sadr)
 	//log.Println("Using source address:", sadr)
@@ -268,7 +266,7 @@ func (c *config) connect(ctx context.Context) {
 	}
 	c.limiter <- 0
 	conn, err := d.DialContext(ctx, "tcp", *c.addr)
-	<- c.limiter
+	<-c.limiter
 	if err != nil {
 		//log.Println("Connect", err)
 		atomic.AddUint64(&stats.FailedConnects, 1)
@@ -316,7 +314,7 @@ func (c *config) udpConnect(ctx context.Context) {
 	c.limiter <- 0
 	conn, err := net.DialUDP("udp", saddr, raddr)
 	if err != nil {
-		<- c.limiter
+		<-c.limiter
 		atomic.AddUint64(&stats.FailedConnects, 1)
 		return
 	}
@@ -327,13 +325,13 @@ func (c *config) udpConnect(ctx context.Context) {
 	}
 
 	if _, err = conn.Write([]byte("Hello")); err != nil {
-		<- c.limiter
+		<-c.limiter
 		atomic.AddUint64(&stats.FailedConnects, 1)
 		return
 	}
 	buf := make([]byte, 4096)
 	len, err := conn.Read(buf)
-	<- c.limiter
+	<-c.limiter
 	if err != nil {
 		atomic.AddUint64(&stats.FailedReads, 1)
 		return
@@ -343,34 +341,33 @@ func (c *config) udpConnect(ctx context.Context) {
 	}
 }
 
-
 // ----------------------------------------------------------------------
 // Stats
 
 type statistics struct {
-	Hostmap map[string]int  `json:"hosts"`
-	Connects int            `json:"connects"`
-	FailedConnects uint64   `json:"failed_connects"`
-	FailedReads uint64      `json:"failed_reads"`
-	Start time.Time         `json:"start_time"`
-	Timeout time.Duration   `json:"timeout"`
-	Duration time.Duration  `json:"duration"`
+	Hostmap        map[string]int `json:"hosts"`
+	Connects       int            `json:"connects"`
+	FailedConnects uint64         `json:"failed_connects"`
+	FailedReads    uint64         `json:"failed_reads"`
+	Start          time.Time      `json:"start_time"`
+	Timeout        time.Duration  `json:"timeout"`
+	Duration       time.Duration  `json:"duration"`
 }
+
 var hostch chan string = make(chan string, 100)
 var stats = statistics{
 	Hostmap: make(map[string]int),
 }
 
-
 func stats_worker(wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
-		h := <- hostch
+		h := <-hostch
 		if h == "QUIT!" {
 			return
 		}
 		if val, ok := stats.Hostmap[h]; ok {
-			stats.Hostmap[h] = (val+1)
+			stats.Hostmap[h] = (val + 1)
 		} else {
 			stats.Hostmap[h] = 1
 		}
