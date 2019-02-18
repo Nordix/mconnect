@@ -7,16 +7,15 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
+	"github.com/Nordix/mconnect/pkg/rndip"
 	"log"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,13 +49,13 @@ type config struct {
 	keep          *bool
 	udp           *bool
 	version       *bool
-	srcmax        *int
 	seed          *int
 	maxconcurrent *int
 	output        *string
 	timeout       *time.Duration
 	limiter       chan int
 	wg            sync.WaitGroup
+	rndip         *rndip.Rndip
 }
 
 func main() {
@@ -68,8 +67,7 @@ func main() {
 	var cmd config
 	cmd.isServer = flag.Bool("server", false, "Act as server")
 	cmd.addr = flag.String("address", "[::1]:5001", "Server address")
-	cmd.src = flag.String("src", "", "Base source address use")
-	cmd.srcmax = flag.Int("srcmax", 100, "Number of connect sources")
+	cmd.src = flag.String("srccidr", "", "Base source CIDR to use")
 	cmd.nconn = flag.Int("nconn", 1, "Number of connections")
 	cmd.keep = flag.Bool("keep", false, "Keep connections open")
 	cmd.k8sprobe = flag.String("k8sprobe", "", "k8s liveness address (http)")
@@ -109,6 +107,13 @@ func (c *config) client() int {
 
 	c.limiter = make(chan int, *c.maxconcurrent)
 	go stats_worker(&c.wg)
+
+	if *c.src != "" {
+		var err error
+		if c.rndip, err = rndip.New(*c.src); err != nil {
+			log.Fatal("scrcidr", err)
+		}
+	}
 
 	// Connects have a default timeout of 2min. So if all connects
 	// times out the execution time would be horrible for say 10000
@@ -234,34 +239,13 @@ func (c *config) Help() string {
 	return helptext
 }
 
-func rndAddress(base string, cnt int) (adr net.Addr, err error) {
-
-	var sadr string
-	if strings.ContainsAny(base, ":") {
-		// ipv6
-		if cnt > 0xfffe {
-			err = errors.New("Address range too large")
-			return
-		}
-		sadr = fmt.Sprintf("[%s:%x]:0", base, rand.Intn(cnt)+1)
-	} else {
-		// ipv4
-		if cnt > 254 {
-			err = errors.New("Address range too large")
-			return
-		}
-		sadr = fmt.Sprintf("%s.%d:0", base, rand.Intn(cnt)+1)
-	}
-	adr, err = net.ResolveTCPAddr("tcp", sadr)
-	//log.Println("Using source address:", sadr)
-	return
-}
-
 func (c *config) connect(ctx context.Context) {
 	defer c.wg.Done()
 	var d net.Dialer
-	if *c.src != "" {
-		if saddr, err := rndAddress(*c.src, *c.srcmax); err != nil {
+	if c.rndip != nil {
+		sadr := fmt.Sprintf("%s:0", c.rndip.GetIPString())
+		//log.Println("Using source", sadr)
+		if saddr, err := net.ResolveTCPAddr("tcp", sadr); err != nil {
 			log.Fatal(err)
 			return
 		} else {
@@ -300,12 +284,12 @@ func (c *config) udpConnect(ctx context.Context) {
 	defer c.wg.Done()
 
 	var saddr *net.UDPAddr
-	if *c.src != "" {
-		if src, err := rndAddress(*c.src, *c.srcmax); err != nil {
+	if c.rndip != nil {
+		sadr := fmt.Sprintf("%s:0", c.rndip.GetIPString())
+		var err error
+		if saddr, err = net.ResolveUDPAddr("udp", sadr); err != nil {
 			log.Fatal(err)
 			return
-		} else {
-			saddr, err = net.ResolveUDPAddr("udp", src.String())
 		}
 	}
 

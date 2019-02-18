@@ -119,12 +119,9 @@ to be specified) to use any address from the ranges assigned to the
 loopback interface;
 
 ```
-mconnect -address 10.0.0.2:5001 -nconn 1000 -src 222.222.222 -srcmax 254
-mconnect -address [1000::2]:5001 -nconn 1000 -src 5000: -srcmax 65534
+mconnect -address 10.0.0.2:5001 -nconn 1000 -srccidr 222.222.222.0/24
+mconnect -address [1000::2]:5001 -nconn 1000 -srccidr 5000::/112
 ```
-
-The implementation is a hack and works on strings; ".rnd" is added for
-ipv4 and ":rnd" for ipv6. Feel free to improve.
 
 
 ## Kubernetes Liveness probe
