@@ -77,20 +77,14 @@ printout pipe through [jq](https://stedolan.github.io/jq/);
 ## Build
 
 ```
+./build.sh image
+# Manual;
 go get -u github.com/Nordix/mconnect
 cd $GOPATH/src/github.com/Nordix/mconnect
-ver=$(git rev-parse --short HEAD)
-CGO_ENABLED=0 GOOS=linux go install -a \
-  -ldflags "-extldflags '-static' -X main.version=$ver" \
-  github.com/Nordix/mconnect/cmd/mconnect
-strip $GOPATH/bin/mconnect
-
-# Build a docker image;
-docker rmi docker.io/nordixorg/mconnect:$ver
-cd $GOPATH/bin
-tar -cf - mconnect | docker import \
-  -c 'CMD ["/mconnect", "-server", "-udp", "-address", "[::]:5001", "-k8sprobe", "[::]:8080"]' \
-  - docker.io/nordixorg/mconnect:$ver
+CGO_ENABLED=0 GO111MODULE=on GOOS=linux go build -a \
+  -ldflags "-extldflags '-static' -X main.version=$(date +%F:%T)" \
+  -o ./image/mconnect ./cmd/...
+strip ./image/mconnect
 ```
 
 

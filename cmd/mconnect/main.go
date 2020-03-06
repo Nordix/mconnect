@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/Nordix/mconnect/pkg/rndip"
 	"log"
 	"math/rand"
 	"net"
@@ -19,9 +18,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Nordix/mconnect/pkg/rndip"
 )
 
-var version string = "unknown"
+var version = "unknown"
 
 const helptext = `
 Mconnect make many connects towards an address. The address is
@@ -106,7 +107,7 @@ func (c *config) client() int {
 	}
 
 	c.limiter = make(chan int, *c.maxconcurrent)
-	go stats_worker(&c.wg)
+	go statsWorker(&c.wg)
 
 	if *c.src != "" {
 		var err error
@@ -165,7 +166,7 @@ func (c *config) client() int {
 	return 0
 }
 
-type Server struct {
+type server struct {
 	hostname string
 }
 
@@ -178,7 +179,7 @@ func (c *config) server() int {
 		return -1
 	}
 	log.Println("Listen on address; ", *c.addr)
-	obj := new(Server)
+	obj := new(server)
 	if obj.hostname, err = os.Hostname(); err != nil {
 		log.Fatal("os.Hostname", err)
 		return -1
@@ -223,7 +224,7 @@ func (c *config) udpServer(hostname string) {
 }
 
 // Handles incoming requests.
-func (obj *Server) handleRequest(conn net.Conn) {
+func (obj *server) handleRequest(conn net.Conn) {
 	defer conn.Close()
 	conn.Write([]byte(obj.hostname))
 	buf := make([]byte, 1024)
@@ -247,7 +248,6 @@ func (c *config) connect(ctx context.Context) {
 		//log.Println("Using source", sadr)
 		if saddr, err := net.ResolveTCPAddr("tcp", sadr); err != nil {
 			log.Fatal(err)
-			return
 		} else {
 			d = net.Dialer{LocalAddr: saddr}
 		}
@@ -269,14 +269,13 @@ func (c *config) connect(ctx context.Context) {
 
 	buf := make([]byte, 4096)
 	for ok := true; ok; ok = *c.keep {
-		if len, err := conn.Read(buf); err != nil {
+		len, err := conn.Read(buf)
+		if err != nil {
 			atomic.AddUint64(&stats.FailedReads, 1)
-			//log.Print("Read", err)
 			return
-		} else {
-			host := string(buf[:len])
-			hostch <- host
 		}
+		host := string(buf[:len])
+		hostch <- host
 	}
 }
 
@@ -323,13 +322,12 @@ func (c *config) udpConnect(ctx context.Context) {
 	if err != nil {
 		atomic.AddUint64(&stats.FailedReads, 1)
 		return
-	} else {
-		host := string(buf[:len])
-		hostch <- host
 	}
+	host := string(buf[:len])
+	hostch <- host
 }
 
-var malfunction bool = false
+var malfunction = false
 
 func livenessHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -377,12 +375,12 @@ type statistics struct {
 	Duration       time.Duration  `json:"duration"`
 }
 
-var hostch chan string = make(chan string, 100)
+var hostch = make(chan string, 100)
 var stats = statistics{
 	Hostmap: make(map[string]int),
 }
 
-func stats_worker(wg *sync.WaitGroup) {
+func statsWorker(wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		h := <-hostch
