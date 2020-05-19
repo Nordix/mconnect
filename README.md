@@ -1,6 +1,6 @@
 # mconnect
 
-Test programs that makes many connects to a vip address.
+Test programs that makes many connects to a vip ([Virtual IP Address](https://en.wikipedia.org/wiki/Virtual_IP_address)) address.
 
 The purpose is fast test of connectivity and load-balancing.
 `mconnect` in server mode is started on all targets and then
