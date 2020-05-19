@@ -12,7 +12,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"net/http"
 	"os"
 	"runtime"
 	"sync"
@@ -91,7 +90,6 @@ func main() {
 	}
 
 	if *cmd.isServer {
-		k8sLivenessServer(*cmd.k8sprobe)
 		os.Exit(cmd.server())
 	} else {
 		os.Exit(cmd.client())
@@ -271,6 +269,7 @@ func (c *config) connect(ctx context.Context) {
 	for ok := true; ok; ok = *c.keep {
 		len, err := conn.Read(buf)
 		if err != nil {
+			fmt.Println("Read err:", err)
 			atomic.AddUint64(&stats.FailedReads, 1)
 			return
 		}
@@ -327,40 +326,6 @@ func (c *config) udpConnect(ctx context.Context) {
 	hostch <- host
 }
 
-var malfunction = false
-
-func livenessHandler(w http.ResponseWriter, r *http.Request) {
-
-	mal := r.Header.Get("X-Malfunction")
-	if mal != "" {
-		if mal == "yes" {
-			malfunction = true
-		} else {
-			malfunction = false
-		}
-	}
-
-	if malfunction {
-		w.WriteHeader(500)
-	}
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "Nemo"
-	}
-	fmt.Fprintf(w, "%s,%s\n", hostname, r.RemoteAddr)
-}
-
-func k8sLivenessServer(addr string) {
-	if addr == "" {
-		return
-	}
-	log.Printf("K8s Liveness on; http://%s/healthz\n", addr)
-	http.HandleFunc("/healthz", livenessHandler)
-	go func(addr string) {
-		log.Fatal(http.ListenAndServe(addr, nil))
-	}(addr)
-}
 
 // ----------------------------------------------------------------------
 // Stats

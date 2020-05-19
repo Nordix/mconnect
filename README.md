@@ -116,35 +116,3 @@ loopback interface;
 mconnect -address 10.0.0.2:5001 -nconn 1000 -srccidr 222.222.222.0/24
 mconnect -address [1000::2]:5001 -nconn 1000 -srccidr 5000::/112
 ```
-
-
-## Kubernetes Liveness probe
-
-When running as a server `mconnect` can start a http server to listen
-to Kubernetes Liveness probes;
-
-```
-mconnect -server -address [::]:5001 -k8sprobe [::]:8080
-2018/11/28 14:58:40 K8s Liveness on; http://[::]:8080/healthz
-2018/11/28 14:58:40 Listen on address;  [::]:5001
-```
-
-The probe address will reply with the hostname and the callers
-address;
-
-```
-curl http://[::1]:8080/healthz
-your-hostname,[::1]:43652
-```
-
-A http header can be used to emulate a malfunction;
-
-```
-curl -I -H "X-Malfunction: yes" http://[::1]:8080/healthz
-HTTP/1.1 500 Internal Server Error
-...
-```
-
-All subsequent calls to the liveness probe address will return "500"
-until the server is restarted by Kubernetes or until a call with the
-`X-Malfunction` set to anything except "yes".
