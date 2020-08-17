@@ -28,9 +28,9 @@ itself.
 ## Kubernetes
 
 An image for use in Kubernetes is uploaded to
-`docker.io/nordixorg/mconnect`.  You can install it with the provided
-[manifest](mconnect.yaml). The service address (ClusterIP) can then be
-used to access the server;
+`registry.nordix.org/cloud-native/mconnect`.  You can install it with
+the provided [manifest](mconnect.yaml). The service address
+(ClusterIP) can then be used to access the server;
 
 ```
 # kubectl apply -f https://github.com/Nordix/mconnect/raw/master/mconnect.yaml

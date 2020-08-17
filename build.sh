@@ -34,7 +34,7 @@ dbg() {
 ##    Print environment.
 ##
 cmd_env() {
-	test -n "$__image" || __image=docker.io/nordixorg/mconnect
+	test -n "$__image" || __image=registry.nordix.org/cloud-native/mconnect
 	test -n "$__version" || __version=latest
 	test "$cmd" = "env" && set | grep -E '^(__.*)='
 }
