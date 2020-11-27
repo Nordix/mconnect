@@ -12,7 +12,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"net/http"
 	"os"
 	"runtime"
 	"sync"
@@ -20,10 +19,6 @@ import (
 	"time"
 
 	"github.com/Nordix/mconnect/pkg/rndip"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var version = "unknown"
@@ -48,7 +43,6 @@ Options;
 type config struct {
 	isServer      *bool
 	addr          *string
-	metricsAddr   *string
 	src           *string
 	nconn         *int
 	k8sprobe      *string
@@ -73,7 +67,6 @@ func main() {
 	var cmd config
 	cmd.isServer = flag.Bool("server", false, "Act as server")
 	cmd.addr = flag.String("address", "[::1]:5001", "Server address")
-	cmd.metricsAddr = flag.String("metricsaddress", "", "Prometheus metrics address")
 	cmd.src = flag.String("srccidr", "", "Base source CIDR to use")
 	cmd.nconn = flag.Int("nconn", 1, "Number of connections")
 	cmd.keep = flag.Bool("keep", false, "Keep connections open")
@@ -177,15 +170,6 @@ type server struct {
 
 func (c *config) server() int {
 
-	var opsProcessed = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "Connects_total",
-		Help: "The total number of incoming connects",
-	})
-	if c.metricsAddr != nil {
-		http.Handle("/metrics", promhttp.Handler())
-		go http.ListenAndServe(*c.metricsAddr, nil)
-	}
-
 	// About listen backlog; /proc/sys/net/core/somaxconn and man listen(2)
 	l, err := net.Listen("tcp", *c.addr)
 	if err != nil {
@@ -207,9 +191,6 @@ func (c *config) server() int {
 		if conn, err := l.Accept(); err != nil {
 			log.Fatal(err)
 		} else {
-			if c.metricsAddr != nil {
-				opsProcessed.Inc()
-			}
 			go obj.handleRequest(conn)
 		}
 	}
@@ -344,6 +325,7 @@ func (c *config) udpConnect(ctx context.Context) {
 	host := string(buf[:len])
 	hostch <- host
 }
+
 
 // ----------------------------------------------------------------------
 // Stats
