@@ -19,6 +19,9 @@ import (
 	"time"
 
 	"github.com/Nordix/mconnect/pkg/rndip"
+
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 var version = "unknown"
@@ -45,7 +48,6 @@ type config struct {
 	addr          *string
 	src           *string
 	nconn         *int
-	k8sprobe      *string
 	keep          *bool
 	udp           *bool
 	version       *bool
@@ -70,7 +72,6 @@ func main() {
 	cmd.src = flag.String("srccidr", "", "Base source CIDR to use")
 	cmd.nconn = flag.Int("nconn", 1, "Number of connections")
 	cmd.keep = flag.Bool("keep", false, "Keep connections open")
-	cmd.k8sprobe = flag.String("k8sprobe", "", "k8s liveness address (http)")
 	cmd.udp = flag.Bool("udp", false, "Use UDP")
 	cmd.version = flag.Bool("version", false, "Print version and quit")
 	cmd.seed = flag.Int("seed", 0, "Rnd seed. 0 = init from time")
@@ -200,24 +201,43 @@ func (c *config) server() int {
 
 func (c *config) udpServer(hostname string) {
 
-	pc, err := net.ListenPacket("udp", *c.addr)
+	serverAddr, err := net.ResolveUDPAddr("udp", *c.addr)
+	if err != nil {
+		log.Fatal(err)
+	}	
+	conn, err := net.ListenUDP("udp", serverAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Println("Listen on UDP address; ", *c.addr)
 
+	if err := setUDPSocketOptions(conn); err != nil {
+		log.Fatal(err)
+	}
+/*
+	if hostname, err := os.Hostname(); err != nil {
+		log.Fatal("os.Hostname", err)
+	}
+*/
 	rd := func(pc net.PacketConn) {
-		buf := make([]byte, 9000)
+		buf := make([]byte, 2048)
+		oob := make([]byte, 2048)
 		for {
-			_, addr, err := pc.ReadFrom(buf)
+			//n, oobn, flags, addr, err
+			_, oobn, _, addr, err := conn.ReadMsgUDP(buf, oob)
 			if err != nil {
-				continue
+				log.Fatal(err)
 			}
-			pc.WriteTo([]byte(hostname), addr)
+			oobd := oob[:oobn]
+
+			_, _, err = conn.WriteMsgUDP([]byte(hostname), correctSource(oobd), addr)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 	for i := 0; i < runtime.NumCPU(); i++ {
-		go rd(pc)
+		go rd(conn)
 	}
 }
 
@@ -358,4 +378,59 @@ func statsWorker(wg *sync.WaitGroup) {
 			stats.Hostmap[h] = 1
 		}
 	}
+}
+
+/*
+  Taken from;
+   https://github.com/miekg/dns/blob/master/udp.go
+  License;
+   https://github.com/miekg/dns/blob/master/LICENSE
+ */
+
+func setUDPSocketOptions(conn *net.UDPConn) error {
+	// Try setting the flags for both families and ignore the errors unless they
+	// both error.
+	err6 := ipv6.NewPacketConn(conn).SetControlMessage(ipv6.FlagDst|ipv6.FlagInterface, true)
+	err4 := ipv4.NewPacketConn(conn).SetControlMessage(ipv4.FlagDst|ipv4.FlagInterface, true)
+	if err6 != nil && err4 != nil {
+		return err4
+	}
+	return nil
+}
+
+// parseDstFromOOB takes oob data and returns the destination IP.
+func parseDstFromOOB(oob []byte) net.IP {
+	// Start with IPv6 and then fallback to IPv4
+	// TODO(fastest963): Figure out a way to prefer one or the other. Looking at
+	// the lvl of the header for a 0 or 41 isn't cross-platform.
+	cm6 := new(ipv6.ControlMessage)
+	if cm6.Parse(oob) == nil && cm6.Dst != nil {
+		return cm6.Dst
+	}
+	cm4 := new(ipv4.ControlMessage)
+	if cm4.Parse(oob) == nil && cm4.Dst != nil {
+		return cm4.Dst
+	}
+	return nil
+}
+
+// correctSource takes oob data and returns new oob data with the Src equal to the Dst
+func correctSource(oob []byte) []byte {
+	dst := parseDstFromOOB(oob)
+	if dst == nil {
+		return nil
+	}
+	// If the dst is definitely an IPv6, then use ipv6's ControlMessage to
+	// respond otherwise use ipv4's because ipv6's marshal ignores ipv4
+	// addresses.
+	if dst.To4() == nil {
+		cm := new(ipv6.ControlMessage)
+		cm.Src = dst
+		oob = cm.Marshal()
+	} else {
+		cm := new(ipv4.ControlMessage)
+		cm.Src = dst
+		oob = cm.Marshal()
+	}
+	return oob
 }
