@@ -43,6 +43,10 @@ func (r *Rndip) GetIP() net.IP {
 	return ip
 }
 
+func (r *Rndip) GetIPStringIdx(_cursor uint32) string {
+	return r.GetIPString()
+}
+
 func (r *Rndip) GetIPString() string {
 	ip := r.GetIP()
 	if ip.To4() == nil {
